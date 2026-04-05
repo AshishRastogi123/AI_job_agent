@@ -4,10 +4,9 @@ from llm.prompts import FIELD_INFERENCE_PROMPT
 llm = get_llm()
 
 def infer_field(field_name, profile):
-
     prompt = FIELD_INFERENCE_PROMPT.format(
         field_name=field_name,
         profile=profile
     )
-
-    return llm.predict(prompt)
+    response = llm.invoke(prompt)
+    return response.content
