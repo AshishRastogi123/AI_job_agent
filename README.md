@@ -24,12 +24,22 @@ python seed_demo.py # Add demo data
 python main.py --job-url "https://example.com/job"
 ```
 
+## 📁 Outputs
+
+The system generates and saves PDF files for resumes and cover letters in the `resumes/` folder:
+
+- **Resumes**: `resume_<user_id>_<job_id>.pdf` - Tailored resumes generated for each job application
+- **Cover Letters**: `cover_letter_<user_id>_<timestamp>.pdf` - Personalized cover letters with timestamps
+
+All PDF files are automatically created and saved in the `resumes/` directory at the project root. Check the console output for confirmation messages showing the file paths where PDFs are saved.
+
 ## 🎯 Overview
 
 This system autonomously:
 - Fetches job URLs from a queue
 - Extracts job descriptions using browser automation
 - Generates tailored resumes and cover letters using LLM
+- **Creates PDF versions of resumes and cover letters saved in `resumes/` folder**
 - Detects Applicant Tracking Systems (ATS) platforms
 - Intelligently fills out job application forms
 - Submits applications automatically

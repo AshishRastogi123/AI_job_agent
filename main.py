@@ -6,9 +6,8 @@ AI Job Application Agent - Main Runner
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 from agent.orchestrator import JobApplicationAgent
-from queue.manager import JobQueue
+from job_queue.manager import JobQueue
 from db.queries import insert_job
 import argparse
 

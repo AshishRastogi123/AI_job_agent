@@ -1,4 +1,5 @@
 from db.connection import get_connection
+import json
 
 def get_user(user_id):
     conn = get_connection()
@@ -28,7 +29,7 @@ def update_job_status(job_id, status, failure_reason=None, unanswered_fields=Non
         UPDATE jobs
         SET status = %s, failure_reason = %s, unanswered_fields = %s, updated_at = CURRENT_TIMESTAMP
         WHERE id = %s
-    """, (status, failure_reason, unanswered_fields, job_id))
+    """, (status, failure_reason, json.dumps(unanswered_fields) if unanswered_fields else None, job_id))
     conn.commit()
     conn.close()
 

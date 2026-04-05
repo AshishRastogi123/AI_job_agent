@@ -1,29 +1,31 @@
 from langgraph.graph import StateGraph, END
-from typing import Dict, Any, List
+from typing import Optional, Dict, Any, List, TypedDict
 from browser.automation import BrowserAutomation
 from ats.detector import ATSDetector
 from utils.field_mapper import FieldMapper
+from utils.pdf_utils import save_pdf
 from llm.resume_generator import generate_resume
 from llm.cover_letter import generate_cover_letter
 from db.queries import update_job_status, mark_job_applied, get_pending_jobs
-from queue.manager import JobQueue
+from job_queue.manager import JobQueue
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class JobApplicationState:
+class JobApplicationState(TypedDict):
     """State for the job application workflow"""
-    def __init__(self):
-        self.job_id: int = 0
-        self.job_url: str = ""
-        self.job_description: str = ""
-        self.ats_platform: str = ""
-        self.resume_content: str = ""
-        self.cover_letter: str = ""
-        self.form_fields: List[Dict] = []
-        self.unanswered_fields: List[str] = []
-        self.user_id: int = 1  # Default user for demo
+    job_id: int
+    job_url: str
+    job_description: str
+    ats_platform: str
+    resume_content: str
+    cover_letter: str
+    resume_path: str
+    cover_letter_path: str
+    form_fields: List[Dict]
+    unanswered_fields: List[str]
+    user_id: int
 
 class JobApplicationAgent:
     """LangGraph-based agent for autonomous job applications"""
@@ -38,7 +40,7 @@ class JobApplicationAgent:
 
     def _build_workflow(self) -> StateGraph:
         """Build the LangGraph workflow"""
-        workflow = StateGraph(JobApplicationState)
+        workflow = StateGraph(Dict[str, Any])
 
         # Add nodes
         workflow.add_node("fetch_job", self._fetch_job)
@@ -65,7 +67,7 @@ class JobApplicationAgent:
 
         return workflow.compile()
 
-    def _fetch_job(self, state: JobApplicationState) -> JobApplicationState:
+    def _fetch_job(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Fetch next job from queue"""
         logger.info("Fetching next job from queue...")
         job = self.queue.get_next_job()
@@ -73,19 +75,21 @@ class JobApplicationAgent:
             # Get from DB if queue is empty
             pending_jobs = get_pending_jobs()
             if pending_jobs:
-                state.job_id, state.job_url = pending_jobs[0]
+                job_id, job_url = pending_jobs[0]
+                return {**state, "job_id": job_id, "job_url": job_url}
             else:
                 raise ValueError("No jobs available")
         else:
-            state.job_url = job
-        logger.info(f"Processing job: {state.job_url}")
+            return {**state, "job_url": job}
+        logger.info(f"Processing job: {state['job_url']}")
         return state
 
-    def _extract_job_description(self, state: JobApplicationState) -> JobApplicationState:
+    def _extract_job_description(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Extract job description from the job page"""
         logger.info("Extracting job description...")
+        job_description = ""
         with BrowserAutomation() as browser:
-            content = browser.navigate_to_job(state.job_url)
+            content = browser.navigate_to_job(state["job_url"])
             # Simple extraction - in production, use more sophisticated parsing
             # Look for common JD containers
             jd_selectors = [
@@ -100,58 +104,70 @@ class JobApplicationAgent:
                 try:
                     element = browser.page.query_selector(selector)
                     if element:
-                        state.job_description = element.inner_text()
+                        job_description = element.inner_text()
                         break
                 except:
                     continue
 
-            if not state.job_description:
+            if not job_description:
                 # Fallback to page title and meta description
-                state.job_description = browser.page.title()
+                job_description = browser.page.title()
 
-        logger.info(f"Extracted JD length: {len(state.job_description)}")
-        return state
+        logger.info(f"Extracted JD length: {len(job_description)}")
+        return {**state, "job_description": job_description}
 
-    def _generate_resume(self, state: JobApplicationState) -> JobApplicationState:
+    def _generate_resume(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Generate tailored resume"""
         logger.info("Generating tailored resume...")
         profile = self.field_mapper.profile
-        state.resume_content = generate_resume(profile, state.job_description)
-        logger.info("Resume generated")
-        return state
+        resume_content = generate_resume(profile, state["job_description"])
+        
+        # Generate PDF and save
+        filename = f"resume_{state['user_id']}_{state['job_id']}"
+        resume_path = save_pdf(resume_content, filename, title="Resume")
+        
+        logger.info("Resume generated and PDF saved")
+        return {**state, "resume_content": resume_content, "resume_path": resume_path}
 
-    def _generate_cover_letter(self, state: JobApplicationState) -> JobApplicationState:
+    def _generate_cover_letter(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Generate cover letter"""
         logger.info("Generating cover letter...")
         profile = self.field_mapper.profile
-        state.cover_letter = generate_cover_letter(profile, state.job_description)
-        logger.info("Cover letter generated")
-        return state
+        cover_letter = generate_cover_letter(profile, state["job_description"])
+        
+        # Generate PDF and save
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"cover_letter_{state['user_id']}_{timestamp}"
+        cover_letter_path = save_pdf(cover_letter, filename, title="Cover Letter")
+        
+        logger.info("Cover letter generated and PDF saved")
+        return {**state, "cover_letter": cover_letter, "cover_letter_path": cover_letter_path}
 
-    def _detect_ats(self, state: JobApplicationState) -> JobApplicationState:
+    def _detect_ats(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Detect ATS platform"""
         logger.info("Detecting ATS platform...")
         with BrowserAutomation() as browser:
-            content = browser.navigate_to_job(state.job_url)
-            state.ats_platform = ATSDetector.detect(state.job_url, content) or "unknown"
-        logger.info(f"Detected ATS: {state.ats_platform}")
-        return state
+            content = browser.navigate_to_job(state["job_url"])
+            ats_platform = ATSDetector.detect(state["job_url"], content) or "unknown"
+        logger.info(f"Detected ATS: {ats_platform}")
+        return {**state, "ats_platform": ats_platform}
 
-    def _open_browser(self, state: JobApplicationState) -> JobApplicationState:
+    def _open_browser(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Open browser and navigate to job"""
         logger.info("Opening browser...")
         # Browser is opened in fill_form step
         return state
 
-    def _fill_form(self, state: JobApplicationState) -> JobApplicationState:
+    def _fill_form(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Fill out the application form"""
         logger.info("Filling application form...")
         with BrowserAutomation() as browser:
-            browser.navigate_to_job(state.job_url)
-            state.form_fields = browser.detect_form_fields()
+            browser.navigate_to_job(state["job_url"])
+            form_fields = browser.detect_form_fields()
 
-            for field in state.form_fields:
-                value = self.field_mapper.map_field(field)
+            for field in form_fields:
+                value = self.field_mapper.map_field(field, state.get("resume_path"), state.get("cover_letter_path"))
                 if value:
                     success = browser.fill_field(field, value)
                     if not success:
@@ -159,56 +175,67 @@ class JobApplicationAgent:
                 else:
                     logger.warning(f"Could not map field: {field.get('name', 'unknown')}")
 
-            state.unanswered_fields = self.field_mapper.get_unanswered_fields(state.form_fields)
+            unanswered_fields = self.field_mapper.get_unanswered_fields(form_fields)
 
-        logger.info(f"Form filling complete. Unanswered fields: {len(state.unanswered_fields)}")
-        return state
+        logger.info(f"Form filling complete. Unanswered fields: {len(unanswered_fields)}")
+        return {**state, "form_fields": form_fields, "unanswered_fields": unanswered_fields}
 
-    def _submit_application(self, state: JobApplicationState) -> JobApplicationState:
+    def _submit_application(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Submit the application"""
         logger.info("Submitting application...")
         with BrowserAutomation() as browser:
-            browser.navigate_to_job(state.job_url)
+            browser.navigate_to_job(state["job_url"])
             # Re-fill form if needed (simplified)
             success = browser.submit_form()
             if success:
                 logger.info("Application submitted successfully")
+                unanswered_fields = state["unanswered_fields"]
             else:
                 logger.error("Failed to submit application")
-                state.unanswered_fields.append("form_submission")
-        return state
+                unanswered_fields = state["unanswered_fields"] + ["form_submission"]
+        return {**state, "unanswered_fields": unanswered_fields}
 
-    def _log_result(self, state: JobApplicationState) -> JobApplicationState:
+    def _log_result(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Log the application result"""
-        if state.unanswered_fields:
+        if state["unanswered_fields"]:
             update_job_status(
-                state.job_id,
+                state["job_id"],
                 "failed",
-                f"Unanswered fields: {', '.join(state.unanswered_fields)}",
-                state.unanswered_fields
+                f"Unanswered fields: {', '.join(state['unanswered_fields'])}",
+                state["unanswered_fields"]
             )
-            logger.error(f"Application failed for job {state.job_id}")
+            logger.error(f"Application failed for job {state['job_id']}")
         else:
-            mark_job_applied(state.job_id)
-            logger.info(f"Application successful for job {state.job_id}")
+            mark_job_applied(state["job_id"])
+            logger.info(f"Application successful for job {state['job_id']}")
         return state
 
     def run_application(self, job_url: Optional[str] = None) -> Dict[str, Any]:
         """Run the complete job application workflow"""
-        initial_state = JobApplicationState()
-        initial_state.user_id = self.user_id
+        initial_state: Dict[str, Any] = {
+            "job_id": 0,
+            "job_url": job_url or "",
+            "job_description": "",
+            "ats_platform": "",
+            "resume_content": "",
+            "cover_letter": "",
+            "resume_path": "",
+            "cover_letter_path": "",
+            "form_fields": [],
+            "unanswered_fields": [],
+            "user_id": self.user_id
+        }
 
         if job_url:
             self.queue.add_job(job_url)
-            initial_state.job_url = job_url
 
         try:
             final_state = self.workflow.invoke(initial_state)
             return {
-                "success": len(final_state.unanswered_fields) == 0,
-                "job_url": final_state.job_url,
-                "ats_platform": final_state.ats_platform,
-                "unanswered_fields": final_state.unanswered_fields
+                "success": len(final_state["unanswered_fields"]) == 0,
+                "job_url": final_state["job_url"],
+                "ats_platform": final_state["ats_platform"],
+                "unanswered_fields": final_state["unanswered_fields"]
             }
         except Exception as e:
             logger.error(f"Workflow failed: {e}")

@@ -5,4 +5,11 @@ import psycopg2
 from config import DB_URL
 
 def get_connection():
-    return psycopg2.connect(DB_URL)
+    return psycopg2.connect(
+         dbname="AshishDB",
+        user="postgres",
+        password="ashish@123",   # your real password
+        host="localhost",
+        port="5432"
+    )
+    

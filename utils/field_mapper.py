@@ -27,7 +27,7 @@ class FieldMapper:
             'education': ['education', 'degree', 'university', 'school']
         }
 
-    def map_field(self, field_info: Dict) -> Optional[str]:
+    def map_field(self, field_info: Dict, resume_path: Optional[str] = None, cover_letter_path: Optional[str] = None) -> Optional[str]:
         """
         Map a form field to candidate data using priority:
         1. Profile DB
@@ -43,7 +43,7 @@ class FieldMapper:
         field_text = f"{field_name} {field_label} {field_placeholder}".lower()
 
         # Priority 1: Direct profile match
-        value = self._get_from_profile(field_text)
+        value = self._get_from_profile(field_text, resume_path, cover_letter_path)
         if value:
             return value
 
@@ -63,7 +63,7 @@ class FieldMapper:
 
         return None
 
-    def _get_from_profile(self, field_text: str) -> Optional[str]:
+    def _get_from_profile(self, field_text: str, resume_path: Optional[str] = None, cover_letter_path: Optional[str] = None) -> Optional[str]:
         """Extract value from profile data"""
         # Name
         if any(keyword in field_text for keyword in self.field_mappings['name']):
@@ -79,7 +79,11 @@ class FieldMapper:
 
         # Resume path (for file uploads)
         if any(keyword in field_text for keyword in self.field_mappings['resume']):
-            return self.profile.get('resume_path')
+            return resume_path or self.profile.get('resume_path')
+
+        # Cover letter path (if it's a file upload)
+        if any(keyword in field_text for keyword in self.field_mappings['cover_letter']):
+            return cover_letter_path
 
         # Location (simplified - take first work location)
         if any(keyword in field_text for keyword in self.field_mappings['location']):
