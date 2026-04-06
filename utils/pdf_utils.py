@@ -46,3 +46,11 @@ def save_pdf(content: str, filename: str, title: Optional[str] = None) -> str:
 
     print(f"PDF saved successfully at: {file_path}")
     return file_path
+
+
+def save_text_pdf(content: str, prefix: str, job_id=None, title: Optional[str] = None) -> str:
+    """Save text content as a timestamped PDF in the resumes folder."""
+    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    job_id_label = job_id if job_id is not None else 'unknown'
+    filename = f"{prefix}_{job_id_label}_{timestamp}"
+    return save_pdf(content, filename, title)

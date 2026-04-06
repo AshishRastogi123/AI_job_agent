@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from typing import Dict, Any, Optional
 from services.jd_extractor import JDExtractor
 from services.field_resolver import FieldResolver
-from services.form_filler import FormFillingEngine
+from services.form_filler import FormFillingEngine, print_filled_fields
 from browser.automation import BrowserAutomation
 from ats.detector import ATSDetector
 from llm.resume_generator import generate_resume
@@ -22,6 +22,7 @@ from db.queries import (
 )
 from utils.logging_config import get_logger
 from job_queue.manager import JobQueue
+from utils.pdf_utils import save_text_pdf
 import time
 
 logger = get_logger(__name__)
@@ -66,6 +67,8 @@ class JobApplicationAgent:
             'filled_fields': 0,
             'unanswered_fields': [],
             'errors': [],
+            'resume_path': None,
+            'cover_letter_path': None,
             'message': ''
         }
         
@@ -118,6 +121,13 @@ class JobApplicationAgent:
             resume_content = self._generate_resume(jd)
             logger.info(f"✓ Generated resume ({len(resume_content)} characters)")
             
+            if resume_content:
+                resume_path = save_text_pdf(resume_content, 'resume', job_id, title='Tailored Resume')
+                result['resume_path'] = resume_path
+                logger.info(f"Resume saved successfully at: {resume_path}")
+            else:
+                logger.warning('Resume generation returned empty content; skipping PDF save')
+            
             if job_id:
                 log_application_step(job_id, self.user_id, 'generate_resume', 'success')
             
@@ -125,6 +135,13 @@ class JobApplicationAgent:
             logger.info("\n[STEP 4] Generating cover letter...")
             cover_letter = self._generate_cover_letter(jd)
             logger.info(f"✓ Generated cover letter ({len(cover_letter)} characters)")
+            
+            if cover_letter:
+                cover_letter_path = save_text_pdf(cover_letter, 'cover_letter', job_id, title='Cover Letter')
+                result['cover_letter_path'] = cover_letter_path
+                logger.info(f"Cover letter saved successfully at: {cover_letter_path}")
+            else:
+                logger.warning('Cover letter generation returned empty content; skipping PDF save')
             
             if job_id:
                 log_application_step(job_id, self.user_id, 'generate_cover_letter', 'success')
@@ -136,6 +153,8 @@ class JobApplicationAgent:
             result['filled_fields'] = form_result.get('filled_count', 0)
             result['unanswered_fields'] = form_result.get('unanswered', [])
             result['errors'].extend(form_result.get('errors', []))
+            if form_result.get('filled_fields_detail'):
+                print_filled_fields(form_result.get('filled_fields_detail', []))
             
             if job_id:
                 log_application_step(

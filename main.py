@@ -49,6 +49,10 @@ def main():
             print(f"ATS Platform: {result['ats_platform']}")
             print(f"Fields Filled: {result['filled_fields']}")
             print(f"Unanswered Fields: {len(result['unanswered_fields'])}")
+            if result.get('resume_path'):
+                print(f"Resume saved at: {result['resume_path']}")
+            if result.get('cover_letter_path'):
+                print(f"Cover letter saved at: {result['cover_letter_path']}")
             if result['unanswered_fields']:
                 print("Unanswered field details:")
                 for field in result['unanswered_fields']:

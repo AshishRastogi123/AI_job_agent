@@ -79,9 +79,15 @@ class FormFillingEngine:
                 result = self.fill_field(field, job_description)
                 
                 if result.get('filled'):
-                    self.filled_fields.append(field)
+                    self.filled_fields.append({
+                        'label': field.get('label', field.get('name', '')),
+                        'value': str(result.get('value', ''))
+                    })
                 else:
-                    self.unanswered_fields.append(field)
+                    self.unanswered_fields.append({
+                        'label': field.get('label', field.get('name', '')),
+                        'type': field.get('type', 'unknown')
+                    })
             
             except Exception as e:
                 logger.error(f"Error filling field {field.get('label', 'unknown')}: {e}")
@@ -93,6 +99,7 @@ class FormFillingEngine:
         return {
             'filled_count': len(self.filled_fields),
             'unanswered': self.unanswered_fields,
+            'filled_fields_detail': self.filled_fields,
             'errors': errors
         }
     
@@ -108,30 +115,39 @@ class FormFillingEngine:
         resolved = self.field_resolver.resolve(field_label, field_type, context)
         
         if not resolved.get('value'):
-            logger.warning(f"Could not resolve field: {field_label}")
-            return {'filled': False, 'reason': 'no_value'}
+            if field_type == 'checkbox' and field.get('required'):
+                logger.info(f"Defaulting required checkbox {field_label} to yes")
+                resolved = {
+                    'value': 'yes',
+                    'confidence': 0.5,
+                    'source': 'DEFAULT',
+                    'reasoning': 'Required checkbox defaulted to yes'
+                }
+            else:
+                logger.warning(f"Could not resolve field: {field_label}")
+                return {'filled': False, 'reason': 'no_value'}
         
         # Fill based on field type
         try:
             if field_type in ['text', 'email', 'tel', 'number', 'date', 'url']:
                 element.fill(str(resolved['value']))
                 logger.info(f"Filled {field_label}: {resolved['source']}")
-                return {'filled': True, 'source': resolved['source']}
+                return {'filled': True, 'source': resolved['source'], 'value': resolved['value']}
             
             elif field_type == 'textarea':
                 element.fill(str(resolved['value']))
                 logger.info(f"Filled textarea {field_label}: {resolved['source']}")
-                return {'filled': True, 'source': resolved['source']}
+                return {'filled': True, 'source': resolved['source'], 'value': resolved['value']}
             
             elif field_type == 'select':
                 self._fill_select(element, resolved['value'])
                 logger.info(f"Selected {field_label}: {resolved['source']}")
-                return {'filled': True, 'source': resolved['source']}
+                return {'filled': True, 'source': resolved['source'], 'value': resolved['value']}
             
             elif field_type == 'radio':
                 self._fill_radio(element, resolved['value'])
                 logger.info(f"Selected radio {field_label}: {resolved['source']}")
-                return {'filled': True, 'source': resolved['source']}
+                return {'filled': True, 'source': resolved['source'], 'value': resolved['value']}
             
             elif field_type == 'checkbox':
                 if resolved['value'].lower() in ['yes', 'true', '1']:
@@ -139,12 +155,12 @@ class FormFillingEngine:
                 else:
                     element.uncheck()
                 logger.info(f"Set checkbox {field_label}: {resolved['source']}")
-                return {'filled': True, 'source': resolved['source']}
+                return {'filled': True, 'source': resolved['source'], 'value': resolved['value']}
             
             elif field_type == 'file':
                 self._fill_file(element, field_label)
                 logger.info(f"Uploaded file for {field_label}: {resolved['source']}")
-                return {'filled': True, 'source': resolved['source']}
+                return {'filled': True, 'source': resolved['source'], 'value': resolved['value']}
             
             else:
                 logger.warning(f"Unsupported field type: {field_type}")
@@ -153,7 +169,8 @@ class FormFillingEngine:
         except Exception as e:
             logger.error(f"Error filling field {field_label}: {e}")
             raise
-    
+
+
     def _extract_field_info(self, element, selector: str) -> Dict:
         """Extract field information from element"""
         try:
@@ -241,3 +258,17 @@ class FormFillingEngine:
             logger.info(f"Uploaded resume: {resume_path}")
         else:
             logger.warning(f"Resume file not found: {resume_path}")
+
+
+def print_filled_fields(filled_fields):
+    print("\n" + "="*60)
+    print("FORM FILL SUMMARY")
+    print("="*60)
+
+    for field in filled_fields:
+        print(f"\nField: {field['label']}")
+        print(f"Answer: {field['value']}")
+
+    print("\n" + "-"*60)
+    print(f"Total Fields Filled: {len(filled_fields)}")
+    print("="*60)
