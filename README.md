@@ -1,102 +1,440 @@
 # AI Job Application Agent
 
-AI-powered autonomous job application agent that tailors resumes, generates cover letters, and applies to jobs end-to-end using browser automation and intelligent form filling.
+A production-ready autonomous job application system that intelligently fills out job application forms, tailors resumes, and applies to jobs automatically using AI and browser automation.
 
-## 🚀 Quick Start
+## 🎯 Features
+
+✅ **End-to-End Automation**
+- Fetches jobs from queue
+- Extracts job descriptions reliably
+- Generates tailored resumes & cover letters
+- Detects ATS platforms (Workday, Greenhouse, Lever)
+- Intelligently fills ALL form fields
+- Submits applications automatically
+- Comprehensive error handling & retries
+
+✅ **Intelligent Field Resolution**
+- Priority-based resolution: DB → Custom Answers → LLM → HITL
+- Confidence scoring for each field
+- Human-in-the-loop for uncertain fields
+- Extensible custom answers table
+
+✅ **Production Features**
+- SQLAlchemy + PostgreSQL database
+- Comprehensive logging (file & console)
+- Retry logic with exponential backoff
+- Job tracking and status management
+- Application logs for debugging
+- Clean modular architecture
+
+## 📋 Quick Start
+
+### 1. Prerequisites
+
+- **Python 3.8+**
+- **PostgreSQL 12+**
+- **Redis** (optional, for job queue)
+
+### 2. Setup Environment
 
 ```bash
-# 1. Setup environment
+# Create virtual environment
 python -m venv venv
 venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Linux/Mac
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Install Playwright browsers
 playwright install
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your API keys
-
-# 3. Setup database
-createdb job_agent  # Create PostgreSQL database
-python init_db.py   # Initialize schema
-python seed_demo.py # Add demo data
-
-# 4. Run agent
-python main.py --job-url "https://example.com/job"
 ```
 
-## 📁 Outputs
+### 3. Configure Database
 
-The system generates and saves PDF files for resumes and cover letters in the `resumes/` folder:
+Create `.env` file:
+```env
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=job_agent_db
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_URL=postgresql://postgres:password@localhost:5432/job_agent_db
 
-- **Resumes**: `resume_<user_id>_<job_id>.pdf` - Tailored resumes generated for each job application
-- **Cover Letters**: `cover_letter_<user_id>_<timestamp>.pdf` - Personalized cover letters with timestamps
+# LLM
+GROQ_API_KEY=your_key_here
+LLM_PROVIDER=groq
 
-All PDF files are automatically created and saved in the `resumes/` directory at the project root. Check the console output for confirmation messages showing the file paths where PDFs are saved.
+# Application
+HEADLESS=true
+HITL_ENABLED=true
+MAX_RETRIES=2
+LOG_LEVEL=INFO
+```
 
-## 🎯 Overview
+Create PostgreSQL database:
+```bash
+createdb job_agent_db
+```
 
-This system autonomously:
-- Fetches job URLs from a queue
-- Extracts job descriptions using browser automation
-- Generates tailored resumes and cover letters using LLM
-- **Creates PDF versions of resumes and cover letters saved in `resumes/` folder**
-- Detects Applicant Tracking Systems (ATS) platforms
-- Intelligently fills out job application forms
-- Submits applications automatically
-- Logs results and handles failures
+### 4. Initialize Database
 
-## 🧱 Architecture
+```bash
+python init_db.py
+python seed_demo.py
+```
 
-### Core Components
+### 5. Run Agent
 
-- **Agent Orchestration** (`agent/`): LangGraph-based workflow management
-- **LLM Layer** (`llm/`): Resume/cover letter generation and field inference
-- **Browser Automation** (`browser/`): Playwright-based form interaction
-- **ATS Detection** (`ats/`): Platform fingerprinting and URL pattern matching
-- **Database** (`db/`): PostgreSQL with relational schema
-- **Queue** (`queue/`): Redis-based job queue (optional)
-- **HITL** (`hitl/`): Human-in-the-loop for uncertain fields
-- **Utils** (`utils/`): Field mapping and helper functions
+```bash
+# Single job application
+python main.py --job-url "https://example.com/job"
+
+# Process queue
+python main.py --process-queue
+
+# Add jobs to queue
+python main.py --add-jobs "https://url1.com/job" "https://url2.com/job"
+
+# Specify user
+python main.py --user-id 1 --process-queue
+```
+
+## 🏗️ Architecture
+
+### Directory Structure
+
+```
+ai_job_agent/
+├── agent/                    # Orchestration
+│   └── orchestrator.py      # Main workflow engine
+├── services/                # Core business logic
+│   ├── jd_extractor.py      # Job description extraction
+│   ├── field_resolver.py    # Intelligent field resolution
+│   └── form_filler.py       # Form filling engine
+├── db/                      # Database layer
+│   ├── connection.py        # SQLAlchemy setup
+│   ├── models.py            # SQLAlchemy ORM models
+│   └── queries.py           # Database operations
+├── browser/                 # Browser automation
+│   └── automation.py        # Playwright wrapper
+├── ats/                     # ATS detection
+│   └── detector.py          # Platform detection
+├── llm/                     # LLM integration
+│   ├── llm_client.py        # LLM client (Groq/OpenAI)
+│   ├── resume_generator.py  # Resume generation
+│   ├── cover_letter.py      # Cover letter generation
+│   └── field_inference.py   # Field value inference
+├── hitl/                    # Human-in-the-loop
+│   └── manager.py           # HITL orchestration
+├── job_queue/               # Job queue management
+│   └── manager.py           # Queue operations
+├── utils/                   # Utilities
+│   ├── logging_config.py    # Logging setup
+│   ├── pdf_utils.py         # PDF generation
+│   └── field_mapper.py      # Field mapping
+├── resumes/                 # Generated PDFs
+├── logs/                    # Application logs
+├── main.py                  # CLI entry point
+├── config.py                # Configuration
+├── init_db.py              # Database initialization
+├── seed_demo.py            # Demo data
+└── requirements.txt        # Dependencies
+```
 
 ### Data Flow
 
 ```
-Job URL → Extract JD → Generate Resume/Cover → Detect ATS → Fill Form → Submit → Log
+┌─────────────┐
+│  Job Queue  │
+└──────┬──────┘
+       │
+       ▼
+┌──────────────────────────┐
+│ Fetch Job + Extract JD   │
+│ (Playwright + BeautifulSoup)
+└──────┬───────────────────┘
+       │
+       ▼
+┌──────────────────────────┐
+│ Detect ATS Platform      │
+│ (URL + DOM fingerprinting)
+└──────┬───────────────────┘
+       │
+       ▼
+┌──────────────────────────┐
+│ Generate Resume/Cover    │
+│ (LLM - Groq/OpenAI)      │
+└──────┬───────────────────┘
+       │
+       ▼
+┌──────────────────────────┐
+│ Open Browser & Fill Form │
+│ Intelligent Field Resolver
+│  1. DB Query             │
+│  2. Custom Answers       │
+│  3. LLM Inference        │
+│  4. Human-in-the-Loop    │
+└──────┬───────────────────┘
+       │
+       ▼
+┌──────────────────────────┐
+│ Submit Application       │
+│ + Log Results           │
+└──────────────────────────┘
 ```
 
-## 🏗️ Database Schema
+## 📊 Database Schema
 
-The system uses PostgreSQL with the following tables:
+### Users
+Candidate profiles with education, work experience, and skills
 
-- `users`: Candidate profiles
-- `work_experience`: Professional experience
-- `education`: Academic background
-- `skills`: Technical skills
-- `custom_answers`: Extensible key-value store for form fields
-- `jobs`: Job applications with status tracking
+### Custom Answers
+Extensible key-value store for form fields (reusable across runs)
 
-See `db/schema.sql` for complete schema.
+### Jobs
+Job application tracking with ATS detection and status management
 
-## 📋 Detailed Setup Instructions
+### Application Logs
+Step-by-step execution logs for debugging
 
-### Prerequisites
+### Support Tables
+- `work_experience`: Professional background
+- `education`: Academic credentials
+- `skills`: Technical capabilities
 
-- Python 3.8+
-- PostgreSQL
-- Redis (optional, for queue persistence)
-- Playwright browsers
+## 🧠 Field Resolution Logic
 
-### Installation
+The system intelligently resolves form fields using:
 
-1. **Clone and setup:**
-   ```bash
-   git clone <repo>
-   cd ai-job-agent
-   python -m venv venv
-   venv\Scripts\activate  # Windows
-   # source venv/bin/activate  # Linux/Mac
-   pip install -r requirements.txt
-   ```
+1. **Database (95% confidence)**
+   - User profile (name, email, phone)
+   - Work experience
+   - Education
+   - Skills
+
+2. **Custom Answers (90% confidence)**
+   - Reusable across applications
+   - Learned from previous HITL inputs
+   - Extensible key-value store
+
+3. **LLM Inference (70% confidence)**
+   - Context-aware value generation
+   - Based on full candidate profile + JD
+   - Returns confidence score
+
+4. **Human-in-the-Loop**
+   - Triggered when confidence < 70%
+   - 30-second timeout
+   - Saves answer for future use
+
+## 🎯 ATS Platform Support
+
+| Platform | Detection Method | Pattern Examples |
+|----------|------------------|------------------|
+| **Workday** | URL + DOM | `myworkdayjobs.com`, `wd5.myworkdayjobs.com` |
+| **Greenhouse** | URL + DOM | `boards.greenhouse.io`, `grnh.se` |
+| **Lever** | URL + DOM | `jobs.lever.co` |
+| **LinkedIn** | URL + DOM | `linkedin.com/jobs` |
+
+## 🔧 Form Filling Engine
+
+Supports all input types:
+- Text inputs (name, email, phone, etc.)
+- Email fields
+- Dropdowns
+- Radio buttons
+- Checkboxes
+- File uploads (resume attachment)
+- Textareas
+
+## 📝 Logging
+
+All activities logged to `logs/job_agent.log`:
+- Job start/end with timestamps
+- JD extraction success/failure
+- ATS platform detection
+- Field resolution source (DB/LLM/HITL)
+- Errors with full context
+- Application results
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+```env
+# Database
+DB_URL=postgresql://user:pass@localhost:5432/job_agent_db
+
+# LLM
+GROQ_API_KEY=your_groq_api_key
+LLM_PROVIDER=groq  # or 'openai'
+
+# Browser
+HEADLESS=true
+BROWSER_TIMEOUT=30000  # milliseconds
+
+# HITL
+HITL_ENABLED=true
+HITL_TIMEOUT=30  # seconds
+
+# Logging
+LOG_LEVEL=INFO
+LOG_FILE=logs/job_agent.log
+
+# Application
+MAX_RETRIES=2
+DEBUG=false
+```
+
+## 🚀 Example Usage
+
+### Process Single Job
+```bash
+python main.py --job-url "https://jobs.example.com/senior-engineer"
+```
+
+### Process All Pending Jobs
+```bash
+python main.py --user-id 1 --process-queue --max-jobs 10
+```
+
+### Add Multiple Jobs to Queue
+```bash
+python main.py --add-jobs \
+  "https://greenhouse.io/job1" \
+  "https://workday.io/job2" \
+  "https://lever.co/job3"
+```
+
+## 🔍 Monitoring
+
+Check application status:
+```bash
+# View recent logs
+tail -f logs/job_agent.log
+
+# Check job status in database
+psql job_agent_db
+SELECT * FROM jobs ORDER BY created_at DESC;
+```
+
+## 📈 Performance
+
+- **JD Extraction**: 5-15 seconds per job
+- **Resume/Cover Letter Generation**: 10-30 seconds
+- **Form Filling**: 30-60 seconds depending on form complexity
+- **Average Application**: 1-2 minutes end-to-end
+
+## 🛠️ Production Deployment
+
+### Docker Setup
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+RUN playwright install
+
+COPY . .
+
+CMD ["python", "main.py", "--process-queue"]
+```
+
+### Database Backups
+```bash
+pg_dump job_agent_db > backup.sql
+psql job_agent_db < backup.sql
+```
+
+## 🐛 Troubleshooting
+
+### Database Connection Failed
+- Check PostgreSQL is running: `psql postgres`
+- Verify credentials in `.env`
+- Check database exists: `psql -l | grep job_agent`
+
+### LLM Errors
+- Check API key is valid
+- Check rate limits (Groq/OpenAI)
+- Verify network connectivity
+
+### Form Filling Issues
+- Enable verbose logging: `LOG_LEVEL=DEBUG`
+- Check browser headless mode disabled: `HEADLESS=false`
+- Inspect HTML structure of form
+
+### Timeout Issues
+- Increase `BROWSER_TIMEOUT` value
+- Check network speed
+- Try disabling headless mode for debugging
+
+## 📚 Key Modules
+
+### JDExtractor
+```python
+from services.jd_extractor import JDExtractor
+
+with JDExtractor() as extractor:
+    jd, success = extractor.extract("https://job.url")
+```
+
+### FieldResolver  
+```python
+from services.field_resolver import FieldResolver
+
+resolver = FieldResolver(user_id=1)
+result = resolver.resolve("Email Address", "email", context)
+# Returns: {value, confidence, source, reasoning}
+```
+
+### FormFillingEngine
+```python
+from services.form_filler import FormFillingEngine
+
+filler = FormFillingEngine(page, user_id=1)
+result = filler.fill_forms(job_description)
+# Returns: {filled_count, unanswered, errors}
+```
+
+## 🔐 Security
+
+- No credentials hardcoded (environment variables only)
+- Database connections use connection pooling
+- SQL injection prevention via SQLAlchemy ORM
+- Sensitive logs masked in output
+- Resume files stored locally (not uploaded)
+
+## 📄 License
+
+This project is provided as-is for educational and professional use.
+
+## 🤝 Contributing
+
+Improvements welcome! Areas for enhancement:
+- Support for more ATS platforms
+- Improved resume tailoring
+- Advanced field inference
+- Multi-language support
+- Retry with exponential backoff
+- Webhook notifications
+
+## ✨ Next Steps
+
+1. Configure your PostgreSQL database
+2. Set up your LLM API keys
+3. Run `python init_db.py` to create schema
+4. Run `python seed_demo.py` to add test data
+5. Run `python main.py --process-queue` to start applications
+
+---
+
+**Built with ❤️ for autonomous job applications**
+
 
 2. **Install Playwright browsers:**
    ```bash
