@@ -16,7 +16,7 @@ from ats.detector import ATSDetector
 from llm.resume_generator import generate_resume
 from llm.cover_letter import generate_cover_letter
 from db.queries import (
-    get_user_profile, update_job_status, update_job_ats_platform,
+    get_user_profile, get_last_user_profile, update_job_status, update_job_ats_platform,
     mark_job_applied, save_unanswered_fields, log_application_step,
     get_pending_jobs
 )
@@ -32,13 +32,25 @@ class JobApplicationAgent:
     """Complete orchestrator for autonomous job applications"""
     
     def __init__(self, user_id: int = 1):
+        print(f"[AGENT DEBUG] Initializing JobApplicationAgent with user_id={user_id}")
         self.user_id = user_id
         self.queue = JobQueue()
         self.user_profile = get_user_profile(user_id)
         
         if not self.user_profile:
-            raise ValueError(f"User {user_id} not found")
+            print(f"[AGENT DEBUG] User {user_id} not found, attempting fallback to last saved user")
+            logger.warning(f"User {user_id} not found. Loading most recent saved user from database.")
+            self.user_profile = get_last_user_profile()
+            if self.user_profile:
+                self.user_id = self.user_profile['id']
+                print(f"[AGENT DEBUG] Fallback user loaded: {self.user_profile['name']} (ID {self.user_id})")
+                logger.info(f"Falling back to most recent user: {self.user_profile['name']} (ID {self.user_id})")
+
+        if not self.user_profile:
+            print(f"[AGENT DEBUG] No fallback user available, raising error")
+            raise ValueError(f"User {user_id} not found and no fallback user available")
         
+        print(f"[AGENT DEBUG] Agent initialized for user: {self.user_profile['name']} (ID {self.user_id})")
         logger.info(f"Initialized agent for user: {self.user_profile['name']}")
     
     def run_application(self, job_url: str = None) -> Dict[str, Any]:
@@ -73,6 +85,7 @@ class JobApplicationAgent:
         }
         
         try:
+            print(f"[AGENT DEBUG] Running application for URL: {job_url} with user_id={self.user_id}")
             # Step 1: Fetch or use provided job URL
             if not job_url:
                 pending_jobs = get_pending_jobs(limit=1)

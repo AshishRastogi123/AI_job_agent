@@ -28,10 +28,12 @@ def get_user(user_id: int) -> User:
 
 def get_user_profile(user_id: int) -> dict:
     """Get complete user profile with all data"""
+    print(f"[DB DEBUG] Querying user profile for user_id={user_id}")
     session = get_session()
     try:
         user = session.query(User).filter(User.id == user_id).first()
         if not user:
+            print(f"[DB DEBUG] No user found for user_id={user_id}")
             return None
         
         profile = {
@@ -73,6 +75,63 @@ def get_user_profile(user_id: int) -> dict:
                 for answer in user.custom_answers
             }
         }
+        print(f"[DB DEBUG] Loaded profile for user_id={user.id}, email={user.email}")
+        return profile
+    finally:
+        session.close()
+
+
+def get_last_user_profile() -> dict:
+    """Get the most recently created user profile"""
+    print("[DB DEBUG] Querying last saved user profile")
+    session = get_session()
+    """Get the most recently created user profile"""
+    session = get_session()
+    try:
+        user = session.query(User).order_by(User.id.desc()).first()
+        if not user:
+            return None
+
+        profile = {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "phone": user.phone,
+            "resume_path": user.resume_path,
+            "work_experience": [
+                {
+                    "company": exp.company,
+                    "position": exp.position,
+                    "start_date": exp.start_date.isoformat() if exp.start_date else None,
+                    "end_date": exp.end_date.isoformat() if exp.end_date else None,
+                    "description": exp.description
+                }
+                for exp in user.work_experiences
+            ],
+            "education": [
+                {
+                    "institution": edu.institution,
+                    "degree": edu.degree,
+                    "field_of_study": edu.field_of_study,
+                    "start_date": edu.start_date.isoformat() if edu.start_date else None,
+                    "end_date": edu.end_date.isoformat() if edu.end_date else None,
+                    "gpa": float(edu.gpa) if edu.gpa else None
+                }
+                for edu in user.education
+            ],
+            "skills": [
+                {
+                    "skill_name": skill.skill_name,
+                    "proficiency_level": skill.proficiency_level
+                }
+                for skill in user.skills
+            ],
+            "custom_answers": {
+                answer.field_key: answer.field_value
+                for answer in user.custom_answers
+            }
+        }
+        print(f"[DB DEBUG] Loaded last saved profile for user_id={user.id}, email={user.email}")
         return profile
     finally:
         session.close()

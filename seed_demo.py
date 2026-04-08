@@ -27,7 +27,7 @@ def seed_real_data():
         # Create REAL user
         user = User(
             name="Ashish Kumar Rastogi",
-            email="rastogiashish836@gmail.com",
+            email="rastogiashish835@gmail.com",
             phone="+91 8445631880",
             resume_path="resumes/resume_unknown_20260408.pdf"
         )

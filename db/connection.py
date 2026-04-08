@@ -22,10 +22,12 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_session() -> Session:
     """Get database session"""
+    print("[DB DEBUG] Creating new SQLAlchemy session")
     return SessionLocal()
 
 def get_db_connection():
     """Legacy support for raw psycopg2 connection"""
+    print("[DB DEBUG] Attempting raw psycopg2 connection")
     import psycopg2
     from config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
     
@@ -37,9 +39,11 @@ def get_db_connection():
             host=DB_HOST,
             port=DB_PORT
         )
+        print("[DB DEBUG] Raw psycopg2 connection succeeded")
         return conn
     except psycopg2.Error as e:
         logger.error(f"Failed to connect to database: {e}")
+        print(f"[DB DEBUG] Raw psycopg2 connection failed: {e}")
         raise
 
     
