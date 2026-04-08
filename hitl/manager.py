@@ -112,14 +112,15 @@ class HITLManager:
         Determine if we should fallback to HITL based on field name and confidence.
         In production, this could use ML models to determine uncertainty.
         """
-        # Always fallback for sensitive fields
+        # Do not fallback to HITL for demographic or sensitive fields
         sensitive_fields = [
             'ssn', 'social_security', 'salary', 'compensation',
-            'criminal', 'background', 'references'
+            'criminal', 'background', 'references', 'gender', 'hispanic', 'latino',
+            'veteran', 'disability', 'race', 'ethnicity', 'citizenship', 'employment status', 'age'
         ]
 
         if any(keyword in field_name.lower() for keyword in sensitive_fields):
-            return True
+            return False
 
         # Fallback if confidence is low (placeholder for future ML integration)
         return confidence_score < 0.7

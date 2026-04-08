@@ -122,7 +122,7 @@ class JobApplicationAgent:
             logger.info(f"✓ Generated resume ({len(resume_content)} characters)")
             
             if resume_content:
-                resume_path = save_text_pdf(resume_content, 'resume', job_id, title='Tailored Resume')
+                resume_path = save_text_pdf(resume_content, 'resume', job_id, title='Resume')
                 result['resume_path'] = resume_path
                 logger.info(f"Resume saved successfully at: {resume_path}")
             else:

@@ -32,28 +32,22 @@ class FormFillingEngine:
         fields = []
         
         selectors = [
-            'input[type="text"]',
-            'input[type="email"]',
-            'input[type="tel"]',
-            'input[type="number"]',
-            'input[type="date"]',
-            'input[type="file"]',
-            'input[type="url"]',
+            'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"])',
             'textarea',
-            'select',
-            'input[type="radio"]',
-            'input[type="checkbox"]'
+            'select'
         ]
         
-        for selector in selectors:
-            try:
-                elements = self.page.query_selector_all(selector)
-                for element in elements:
-                    field_info = self._extract_field_info(element, selector)
-                    if field_info:
-                        fields.append(field_info)
-            except Exception as e:
-                logger.debug(f"Error detecting fields with selector {selector}: {e}")
+        frames = [self.page.main_frame] + [frame for frame in self.page.frames if frame != self.page.main_frame]
+        for frame in frames:
+            for selector in selectors:
+                try:
+                    elements = frame.query_selector_all(selector)
+                    for element in elements:
+                        field_info = self._extract_field_info(element, selector)
+                        if field_info:
+                            fields.append(field_info)
+                except Exception as e:
+                    logger.debug(f"Error detecting fields with selector {selector} in frame: {e}")
         
         logger.info(f"Detected {len(fields)} form fields")
         return fields
@@ -129,13 +123,33 @@ class FormFillingEngine:
         
         # Fill based on field type
         try:
+            if not element.is_visible() or not element.is_enabled():
+                try:
+                    element.wait_for_element_state('visible', timeout=BROWSER_TIMEOUT)
+                    element.wait_for_element_state('enabled', timeout=BROWSER_TIMEOUT)
+                except Exception:
+                    logger.warning(f"Skipping invisible or disabled field: {field_label}")
+                    return {'filled': False, 'reason': 'not_visible_or_enabled'}
+
             if field_type in ['text', 'email', 'tel', 'number', 'date', 'url']:
-                element.fill(str(resolved['value']))
+                try:
+                    element.wait_for_element_state('visible', timeout=3000)
+                    element.wait_for_element_state('enabled', timeout=3000)
+                    element.wait_for_element_state('stable', timeout=3000)
+                except Exception:
+                    logger.debug(f"Stability wait failed for {field_label}, continuing with fill")
+                element.fill(str(resolved['value']), force=True)
                 logger.info(f"Filled {field_label}: {resolved['source']}")
                 return {'filled': True, 'source': resolved['source'], 'value': resolved['value']}
             
             elif field_type == 'textarea':
-                element.fill(str(resolved['value']))
+                try:
+                    element.wait_for_element_state('visible', timeout=3000)
+                    element.wait_for_element_state('enabled', timeout=3000)
+                    element.wait_for_element_state('stable', timeout=3000)
+                except Exception:
+                    logger.debug(f"Stability wait failed for textarea {field_label}, continuing with fill")
+                element.fill(str(resolved['value']), force=True)
                 logger.info(f"Filled textarea {field_label}: {resolved['source']}")
                 return {'filled': True, 'source': resolved['source'], 'value': resolved['value']}
             
@@ -175,16 +189,24 @@ class FormFillingEngine:
         """Extract field information from element"""
         try:
             tag_name = element.evaluate('el => el.tagName.toLowerCase()')
-            input_type = element.get_attribute('type') or selector.split('"')[1]
+            input_type = (element.get_attribute('type') or '').lower()
+            if not input_type:
+                input_type = tag_name
+            if tag_name == 'textarea':
+                input_type = 'textarea'
+            if tag_name == 'select':
+                input_type = 'select'
             name = element.get_attribute('name') or element.get_attribute('id') or ''
             placeholder = element.get_attribute('placeholder') or ''
             required = element.get_attribute('required') is not None
             
-            # Try to find label
-            label = self._find_label(element, name)
+            # Resolve field label text
+            label = self._get_element_label(element, name)
             
-            # Skip hidden fields
-            if element.get_attribute('style') and 'display:none' in element.get_attribute('style'):
+            # Skip hidden or invisible fields
+            if not self._is_visible_element(element):
+                return None
+            if self._is_irrelevant_field(name, label):
                 return None
             
             return {
@@ -194,6 +216,7 @@ class FormFillingEngine:
                 'placeholder': placeholder,
                 'label': label or name,
                 'required': required,
+                'visible': True,
                 'element': element
             }
         
@@ -201,24 +224,70 @@ class FormFillingEngine:
             logger.debug(f"Error extracting field info: {e}")
             return None
     
-    def _find_label(self, element, element_id: str = "") -> str:
+    def _get_element_label(self, element, element_id: str = "") -> str:
         """Find associated label for element"""
         try:
-            # Try label with for attribute
+            aria_label = element.get_attribute('aria-label')
+            if aria_label:
+                return aria_label.strip()
+
+            aria_labelledby = element.get_attribute('aria-labelledby')
+            if aria_labelledby:
+                labels = []
+                for label_id in aria_labelledby.split():
+                    label_elem = self.page.query_selector(f'#{label_id}')
+                    if label_elem:
+                        labels.append(label_elem.inner_text().strip())
+                if labels:
+                    return ' '.join(labels)
+
             if element_id:
                 label_elem = self.page.query_selector(f'label[for="{element_id}"]')
                 if label_elem:
-                    return label_elem.inner_text().strip()
-            
-            # Try parent label
-            parent = self.page.evaluate('el => el.closest("label")', element)
-            if parent:
-                return parent.inner_text().strip()
-            
+                    text = label_elem.inner_text().strip()
+                    if text:
+                        return text
+
+            label_text = element.evaluate(
+                'el => { const label = el.closest("label"); return label ? label.innerText.trim() : ""; }'
+            )
+            if label_text:
+                return label_text.strip()
+
             return ""
-        
-        except:
+        except Exception as e:
+            logger.debug(f"Error resolving element label: {e}")
             return ""
+
+    def _is_visible_element(self, element) -> bool:
+        try:
+            if not element.is_visible() or not element.is_enabled():
+                return False
+            box = element.bounding_box()
+            if not box or box['width'] == 0 or box['height'] == 0:
+                return False
+            style = element.evaluate(
+                'el => ({ visibility: window.getComputedStyle(el).visibility, display: window.getComputedStyle(el).display, opacity: window.getComputedStyle(el).opacity })',
+                element
+            )
+            if style.get('visibility') == 'hidden' or style.get('display') == 'none' or style.get('opacity') == '0':
+                return False
+            return True
+        except Exception:
+            return False
+
+    def _is_irrelevant_field(self, name: str, label: str) -> bool:
+        normalized = f"{name or ''} {label or ''}".lower()
+        skip_keywords = [
+            'cookie', 'cookies', 'privacy', 'terms', 'consent', 'optanon',
+            'onetrust', 'vendor', 'performance', 'functional', 'targeting',
+            'marketing', 'accept all', 'reject all', 'cookie preferences',
+            'search…', 'search'
+        ]
+        for keyword in skip_keywords:
+            if keyword in normalized:
+                return True
+        return False
     
     def _fill_select(self, element, value: str):
         """Fill select dropdown"""

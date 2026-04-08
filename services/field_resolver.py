@@ -31,12 +31,14 @@ class FieldResolver:
         'name': ['full name', 'name', 'candidate name', 'your name'],
         'first_name': ['first name', 'given name'],
         'last_name': ['last name', 'surname', 'family name'],
-        'location': ['location', 'city', 'residence', 'address', 'province', 'state'],
+        'location': ['location', 'city', 'residence', 'address', 'province', 'state', 'zip', 'postal', 'country'],
         'linkedin': ['linkedin', 'linkedin profile', 'linkedin url'],
         'github': ['github', 'github profile', 'github url'],
         'website': ['website', 'portfolio', 'personal website'],
-        'resume': ['resume', 'cv', 'curriculum vitae', 'attachment'],
-        'cover_letter': ['cover letter', 'cover', 'motivation'],
+        'resume': ['resume', 'cv', 'curriculum vitae', 'attachment', 'attach', 'upload'],
+        'cover_letter': ['cover letter', 'coverletter', 'personal statement', 'motivation'],
+        'education': ['degree', 'field of study', 'major', 'discipline', 'education'],
+        'sensitive': ['gender', 'hispanic', 'latino', 'veteran', 'disability', 'race', 'ethnicity', 'citizenship', 'employment status', 'age']
     }
     
     CONFIDENCE_THRESHOLDS = {
@@ -66,24 +68,25 @@ class FieldResolver:
         
         # 1. Try database first
         result = self._try_database(field_label, field_type)
-        if result and result.get('confidence', 0) > 0.85:
+        if result and result.get('confidence', 0) >= self.CONFIDENCE_THRESHOLDS['db']:
             logger.info(f"  → Found in DB with confidence {result['confidence']}")
             return result
         
         # 2. Try custom answers
         result = self._try_custom_answers(field_label)
-        if result and result.get('confidence', 0) > 0.85:
+        if result and result.get('confidence', 0) >= self.CONFIDENCE_THRESHOLDS['custom']:
             logger.info(f"  → Found in custom answers")
             return result
         
         # 3. Try LLM inference
         result = self._try_llm_inference(field_label, field_type, context)
-        if result and result.get('confidence', 0) >= self.CONFIDENCE_THRESHOLDS['llm']:
+        threshold = self._get_llm_threshold(field_label, field_type)
+        if result and result.get('confidence', 0) >= threshold:
             logger.info(f"  → LLM inferred with confidence {result['confidence']}")
             return result
-        
-        # 4. Try HITL
-        if HITL_ENABLED and result and result.get('confidence', 0) < self.CONFIDENCE_THRESHOLDS['llm']:
+
+        # 4. Try HITL for non-sensitive fields only
+        if HITL_ENABLED and result and result.get('confidence', 0) < threshold and not self._is_sensitive_field(field_label):
             logger.info(f"  → Confidence too low ({result['confidence']}), triggering HITL")
             hitl_value = self.hitl_manager.request_human_input(field_label, {
                 'type': field_type,
@@ -110,72 +113,160 @@ class FieldResolver:
     def _try_database(self, field_label: str, field_type: str) -> Dict:
         """Try to find value in user database"""
         try:
-            # Map field label to profile fields
             normalized_label = field_label.lower()
-            
-            if 'email' in normalized_label and self.user_profile.get('email'):
+
+            if any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['email']) and self.user_profile.get('email'):
                 return {
                     'value': self.user_profile['email'],
                     'confidence': 0.95,
                     'source': 'DB',
                     'reasoning': 'From user profile email'
                 }
-            
-            if 'phone' in normalized_label and self.user_profile.get('phone'):
+
+            if any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['phone']) and self.user_profile.get('phone'):
                 return {
                     'value': self.user_profile['phone'],
                     'confidence': 0.95,
                     'source': 'DB',
                     'reasoning': 'From user profile phone'
                 }
-            
-            if 'name' in normalized_label and self.user_profile.get('name'):
-                if 'first' in normalized_label:
-                    return {
-                        'value': self.user_profile['name'].split()[0],
-                        'confidence': 0.90,
-                        'source': 'DB',
-                        'reasoning': 'Extracted first name from profile'
-                    }
+
+            if any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['first_name']) and self.user_profile.get('name'):
+                return {
+                    'value': self.user_profile['name'].split()[0],
+                    'confidence': 0.90,
+                    'source': 'DB',
+                    'reasoning': 'Extracted first name from profile'
+                }
+
+            if any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['last_name']) and self.user_profile.get('name'):
+                parts = self.user_profile['name'].split()
+                return {
+                    'value': ' '.join(parts[1:]) if len(parts) > 1 else parts[0],
+                    'confidence': 0.90,
+                    'source': 'DB',
+                    'reasoning': 'Extracted last name from profile'
+                }
+
+            if any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['name']) and self.user_profile.get('name'):
                 return {
                     'value': self.user_profile['name'],
                     'confidence': 0.95,
                     'source': 'DB',
                     'reasoning': 'From user profile name'
                 }
-            
-            # Check skills for skill-related fields
+
+            if any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['resume']):
+                resume_path = self.user_profile.get('resume_path')
+                if resume_path:
+                    return {
+                        'value': resume_path,
+                        'confidence': 0.95,
+                        'source': 'DB',
+                        'reasoning': 'From user resume path'
+                    }
+
+            if any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['education']) and self.user_profile.get('education'):
+                education = self.user_profile['education'][0]
+                if 'degree' in normalized_label:
+                    return {
+                        'value': education.get('degree', ''),
+                        'confidence': 0.90,
+                        'source': 'DB',
+                        'reasoning': 'From user education degree'
+                    }
+                if any(key in normalized_label for key in ['field of study', 'discipline', 'major']):
+                    return {
+                        'value': education.get('field_of_study', ''),
+                        'confidence': 0.90,
+                        'source': 'DB',
+                        'reasoning': 'From user education field of study'
+                    }
+                if 'institution' in normalized_label:
+                    return {
+                        'value': education.get('institution', ''),
+                        'confidence': 0.85,
+                        'source': 'DB',
+                        'reasoning': 'From user education institution'
+                    }
+                if 'end date' in normalized_label or 'end year' in normalized_label:
+                    return {
+                        'value': education.get('end_date', ''),
+                        'confidence': 0.80,
+                        'source': 'DB',
+                        'reasoning': 'From user education end date'
+                    }
+
+            if any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['location']):
+                location = self.user_profile.get('location')
+                if location:
+                    return {
+                        'value': location,
+                        'confidence': 0.85,
+                        'source': 'DB',
+                        'reasoning': 'From user profile location'
+                    }
+
+            if any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['linkedin']) and self.user_profile.get('linkedin'):
+                return {
+                    'value': self.user_profile['linkedin'],
+                    'confidence': 0.90,
+                    'source': 'DB',
+                    'reasoning': 'From user profile linkedin'
+                }
+
+            if any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['github']) and self.user_profile.get('github'):
+                return {
+                    'value': self.user_profile['github'],
+                    'confidence': 0.90,
+                    'source': 'DB',
+                    'reasoning': 'From user profile github'
+                }
+
+            if any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['website']) and self.user_profile.get('website'):
+                return {
+                    'value': self.user_profile['website'],
+                    'confidence': 0.85,
+                    'source': 'DB',
+                    'reasoning': 'From user profile website'
+                }
+
             if 'skill' in normalized_label and self.user_profile.get('skills'):
-                skills_str = ', '.join([s['skill_name'] for s in self.user_profile['skills']])
+                skills_str = ', '.join([s.get('skill_name', s.get('name', '')) for s in self.user_profile['skills']])
                 return {
                     'value': skills_str,
                     'confidence': 0.85,
                     'source': 'DB',
                     'reasoning': 'From user skills'
                 }
-            
-            # Check work experience
+
             if ('experience' in normalized_label or 'company' in normalized_label) and self.user_profile.get('work_experience'):
                 exp = self.user_profile['work_experience'][0] if self.user_profile['work_experience'] else None
                 if exp:
                     if 'company' in normalized_label:
                         return {
-                            'value': exp['company'],
+                            'value': exp.get('company', ''),
                             'confidence': 0.85,
                             'source': 'DB',
                             'reasoning': 'From latest work experience'
                         }
-                    if 'position' in normalized_label:
+                    if 'position' in normalized_label or 'title' in normalized_label:
                         return {
-                            'value': exp['position'],
+                            'value': exp.get('position', ''),
                             'confidence': 0.85,
                             'source': 'DB',
                             'reasoning': 'From latest work position'
                         }
-            
+                    if 'end date' in normalized_label or 'end year' in normalized_label:
+                        return {
+                            'value': exp.get('end_date', ''),
+                            'confidence': 0.80,
+                            'source': 'DB',
+                            'reasoning': 'From latest work experience end date'
+                        }
         except Exception as e:
             logger.warning(f"Error accessing database: {e}")
-        
+
         return None
     
     def _try_custom_answers(self, field_label: str) -> Dict:
@@ -230,3 +321,17 @@ class FieldResolver:
             logger.warning(f"Error during LLM inference: {e}")
         
         return None
+
+    def _get_llm_threshold(self, field_label: str, field_type: str) -> float:
+        normalized_label = field_label.lower()
+        if field_type == 'textarea':
+            return 0.50
+        if any(keyword in normalized_label for keyword in ['why', 'describe', 'explain', 'subject areas', 'expertise', 'experience']):
+            return 0.55
+        if any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['education']):
+            return 0.55
+        return self.CONFIDENCE_THRESHOLDS['llm']
+
+    def _is_sensitive_field(self, field_label: str) -> bool:
+        normalized_label = field_label.lower()
+        return any(keyword in normalized_label for keyword in self.FIELD_PATTERNS['sensitive'])

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Demo Data Seeder for AI Job Application Agent
-Creates realistic test data with candidate profile and sample jobs
+Custom Data Seeder for AI Job Application Agent
+Uses REAL candidate data (Ashish Rastogi)
 """
 
 import sys
@@ -16,100 +16,81 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def seed_demo_data():
-    """Seed comprehensive demo data"""
+def seed_real_data():
     session = get_session()
-    
+
     try:
-        # Check if user already exists
-        existing_user = session.query(User).filter(User.email == "demo@example.com").first()
-        if existing_user:
-            logger.info(f"User already exists with ID: {existing_user.id}")
-            user_id = existing_user.id
-            # Clear old data
-            session.query(WorkExperience).filter(WorkExperience.user_id == user_id).delete()
-            session.query(Education).filter(Education.user_id == user_id).delete()
-            session.query(Skill).filter(Skill.user_id == user_id).delete()
-            session.commit()
-        else:
-            # Create new user
-            user = User(
-                name="Alex Johnson",
-                email="demo@example.com",
-                phone="+1-555-0123",
-                resume_path="resumes/demo_resume.pdf"
-            )
-            session.add(user)
-            session.flush()
-            user_id = user.id
-            logger.info(f"✅ Created user with ID: {user_id}")
-        
-        # Add work experience (3-4 years)
+        # Remove old demo user
+        session.query(User).filter(User.email == "demo@example.com").delete()
+        session.commit()
+
+        # Create REAL user
+        user = User(
+            name="Ashish Kumar Rastogi",
+            email="rastogiashish836@gmail.com",
+            phone="+91 8445631880",
+            resume_path="resumes/resume_unknown_20260408.pdf"
+        )
+        session.add(user)
+        session.flush()
+        user_id = user.id
+
+        logger.info(f"✅ Created REAL user: {user.name}")
+
+        # ========================
+        # EXPERIENCE
+        # ========================
         experiences = [
             {
-                'company': 'Tech Innovations Inc.',
-                'position': 'Senior Software Engineer',
-                'start_date': datetime.now() - timedelta(days=365),
-                'end_date': datetime.now(),
-                'description': 'Led development of microservices architecture using Python and Kubernetes. '
-                               'Improved system performance by 40% through optimization and caching strategies. '
-                               'Mentored 3 junior developers and established code review standards.'
+                'company': 'PearlThoughts',
+                'position': 'AI Engineer Intern',
+                'start_date': datetime(2026, 1, 1),
+                'end_date': datetime(2026, 2, 1),
+                'description': 'Worked on ERPNext Accounts module modernization and Python code refactoring.'
             },
             {
-                'company': 'Data Systems Corp',
-                'position': 'Software Engineer',
-                'start_date': datetime.now() - timedelta(days=730),
-                'end_date': datetime.now() - timedelta(days=365),
-                'description': 'Developed RESTful APIs for data processing pipelines. '
-                               'Implemented MongoDB database solutions and improved query performance by 60%. '
-                               'Worked with cross-functional teams to deliver features on schedule.'
-            },
-            {
-                'company': 'WebFlow Solutions',
-                'position': 'Junior Developer',
-                'start_date': datetime.now() - timedelta(days=1095),
-                'end_date': datetime.now() - timedelta(days=730),
-                'description': 'Built full-stack web applications using React and Node.js. '
-                               'Implemented automated testing and CI/CD pipelines. '
-                               'Participated in agile development process with 2-week sprints.'
+                'company': 'EduSkills (Google Supported)',
+                'position': 'AI/ML Intern',
+                'start_date': datetime(2025, 7, 1),
+                'end_date': datetime(2025, 9, 1),
+                'description': 'Developed CNN models for image classification using TensorFlow.'
             }
         ]
-        
+
         for exp in experiences:
-            work_exp = WorkExperience(
+            session.add(WorkExperience(
                 user_id=user_id,
                 company=exp['company'],
                 position=exp['position'],
                 start_date=exp['start_date'].date(),
-                end_date=exp['end_date'].date() if exp.get('end_date') else None,
+                end_date=exp['end_date'].date(),
                 description=exp['description']
-            )
-            session.add(work_exp)
-        
-        logger.info("✅ Added 3 work experiences")
-        
-        # Add education
+            ))
+
+        # ========================
+        # EDUCATION
+        # ========================
         education = [
-            {
-                'institution': 'State University',
-                'degree': 'Master of Science',
-                'field_of_study': 'Computer Science',
-                'start_date': datetime.now() - timedelta(days=1460),
-                'end_date': datetime.now() - timedelta(days=1095),
-                'gpa': 3.8
-            },
-            {
-                'institution': 'Tech Institute',
-                'degree': 'Bachelor of Science',
-                'field_of_study': 'Computer Engineering',
-                'start_date': datetime.now() - timedelta(days=2920),
-                'end_date': datetime.now() - timedelta(days=1460),
-                'gpa': 3.6
-            }
-        ]
-        
+    {
+        'institution': 'Invertis University',
+        'degree': 'Master of Computer Applications',
+        'field_of_study': 'Computer Applications',
+        'start_date': datetime(2024, 1, 1),
+        'end_date': datetime(2026, 12, 31),
+        'gpa': None
+    },
+    {
+        'institution': 'MJPRU',
+        'degree': 'Bachelor of Science',
+        'field_of_study': 'Science',
+        'start_date': datetime(2021, 1, 1),
+        'end_date': datetime(2024, 1, 1),
+        'gpa': 7.78   # ✅ FIXED (77.8% → 7.78 GPA)
+    }
+]
+
         for edu in education:
-            education_record = Education(
+            session.add(Education(
                 user_id=user_id,
                 institution=edu['institution'],
                 degree=edu['degree'],
@@ -117,139 +98,100 @@ def seed_demo_data():
                 start_date=edu['start_date'].date(),
                 end_date=edu['end_date'].date(),
                 gpa=edu['gpa']
-            )
-            session.add(education_record)
-        
-        logger.info("✅ Added 2 education records")
-        
-        # Add skills
+            ))
+
+        # ========================
+        # SKILLS
+        # ========================
         skills = [
-            ('Python', 'Expert'),
-            ('JavaScript', 'Advanced'),
-            ('Java', 'Advanced'),
-            ('SQL', 'Advanced'),
-            ('Docker', 'Advanced'),
-            ('Kubernetes', 'Intermediate'),
-            ('AWS', 'Intermediate'),
-            ('React', 'Advanced'),
-            ('Node.js', 'Advanced'),
-            ('PostgreSQL', 'Advanced'),
-            ('MongoDB', 'Intermediate'),
-            ('Git', 'Expert'),
-            ('Linux', 'Intermediate'),
-            ('CI/CD', 'Intermediate'),
-            ('Agile', 'Advanced'),
+            "Python", "C++", "JavaScript",
+            "Machine Learning", "Deep Learning",
+            "TensorFlow", "PyTorch", "OpenCV",
+            "Flask", "Node.js",
+            "MongoDB", "MySQL",
+            "Git", "REST APIs"
         ]
-        
-        for skill_name, proficiency in skills:
-            skill = Skill(
+
+        for skill in skills:
+            session.add(Skill(
                 user_id=user_id,
-                skill_name=skill_name,
-                proficiency_level=proficiency
-            )
-            session.add(skill)
-        
-        logger.info(f"✅ Added {len(skills)} skills")
-        
-        # Add custom answers
+                skill_name=skill,
+                proficiency_level="Intermediate"
+            ))
+
+        # ========================
+        # CUSTOM ANSWERS (IMPORTANT 🔥)
+        # ========================
         custom_answers = [
-            ('linkedin_url', 'https://linkedin.com/in/alexjohnson'),
-            ('github_url', 'https://github.com/alexjohnson'),
-            ('personal_website', 'https://alexjohnson.dev'),
-            ('location', 'San Francisco, CA'),
-            ('availability', '2 weeks notice'),
-            ('visa_sponsorship', 'Not required - US Citizen'),
-            ('work_authorization', 'Authorized to work in US'),
-            ('security_clearance', 'None'),
-            ('willing_to_relocate', 'Open to discussion'),
+            ('linkedin_url', 'https://linkedin.com/in/ashish-rastogi-77153331a'),
+            ('github_url', 'https://github.com/AshishRastogi123'),
+            ('location', 'Bareilly, Uttar Pradesh, India'),
+            ('city', 'Bareilly'),
+            ('state', 'Uttar Pradesh'),
+            ('country', 'India'),
+            ('zip_code', '243001'),
+            ('address', 'Bareilly, Uttar Pradesh'),
+            ('gender', 'Male'),
+            ('hispanic', 'No'),
+            ('veteran', 'Not a veteran'),
+            ('disability', 'No disability'),
+            ('degree', 'Master of Computer Applications'),
+            ('availability', 'Immediate'),
+            ('work_authorization', 'Authorized to work in India')
         ]
-        
+
         for key, value in custom_answers:
-            custom_answer = CustomAnswer(
+            session.add(CustomAnswer(
                 user_id=user_id,
                 field_key=key,
                 field_value=value
-            )
-            session.add(custom_answer)
-        
-        logger.info(f"✅ Added {len(custom_answers)} custom answers")
-        
-        # Add demo jobs across different ATS platforms
-        demo_jobs = [
+            ))
+
+        # ========================
+        # JOBS (optional)
+        # ========================
+        session.query(Job).delete()
+
+        jobs = [
             {
-                'url': 'https://boards.greenhouse.io/techcompany/jobs/4234512',
-                'company': 'TechCorp',
-                'title': 'Senior Full Stack Engineer',
+                'url': 'https://job-boards.greenhouse.io/studycontractors/jobs/4772776008',
+                'company': 'Study.com',
+                'title': 'Practice Test Writer',
                 'ats_platform': 'greenhouse'
-            },
-            {
-                'url': 'https://techcompany.wd5.myworkdayjobs.com/en-US/search/job/sr-software-engineer',
-                'company': 'MegaTech Inc',
-                'title': 'Sr. Software Engineer',
-                'ats_platform': 'workday'
-            },
-            {
-                'url': 'https://jobs.lever.co/startup123/lead-backend-engineer',
-                'company': 'StartupXYZ',
-                'title': 'Lead Backend Engineer',
-                'ats_platform': 'lever'
-            },
-            {
-                'url': 'https://anothertech.greenhouse.io/jobs/7654321',
-                'company': 'AnotherTech',
-                'title': 'Platform Engineer',
-                'ats_platform': 'greenhouse'
-            },
-            {
-                'url': 'https://global.wd5.myworkdayjobs.com/jobs/python-engineer',
-                'company': 'Global Systems',
-                'title': 'Python Engineer',
-                'ats_platform': 'workday'
-            },
-            {
-                'url': 'https://jobs.lever.co/scaleup/infrastructure-engineer',
-                'company': 'ScaleUp Labs',
-                'title': 'Infrastructure Engineer',
-                'ats_platform': 'lever'
             }
         ]
-        
-        # Clear existing jobs
-        session.query(Job).delete()
-        
-        for job_data in demo_jobs:
-            job = Job(
+
+        for job_data in jobs:
+            session.add(Job(
                 url=job_data['url'],
                 company=job_data['company'],
                 title=job_data['title'],
-                ats_platform=job_data.get('ats_platform'),
+                ats_platform=job_data['ats_platform'],
                 status='pending'
-            )
-            session.add(job)
-        
-        logger.info(f"✅ Added {len(demo_jobs)} demo job listings")
-        
-        # Commit all changes
+            ))
+
+        # ========================
+        # COMMIT
+        # ========================
         session.commit()
-        
-        logger.info("\n" + "="*60)
-        logger.info("🚀 Demo data seeded successfully!")
-        logger.info("="*60)
-        logger.info(f"User ID: {user_id}")
-        logger.info(f"Name: Alex Johnson")
-        logger.info(f"Email: demo@example.com")
-        logger.info(f"Jobs added: {len(demo_jobs)}")
-        logger.info("\nYou can now run the agent:")
-        logger.info(f"  python main.py --user-id {user_id} --process-queue")
-        logger.info("="*60 + "\n")
+
+        logger.info("\n" + "="*50)
+        logger.info("🚀 REAL DATA SEEDED SUCCESSFULLY")
+        logger.info("="*50)
+        logger.info(f"User: {user.name}")
+        logger.info(f"Email: {user.email}")
+        logger.info("\nRun agent:")
+        logger.info(f"python main.py --user-id {user_id} --process-queue")
+        logger.info("="*50)
 
     except Exception as e:
-        logger.error(f"❌ Error seeding data: {e}", exc_info=True)
+        logger.error(f"❌ Error: {e}", exc_info=True)
         session.rollback()
         sys.exit(1)
+
     finally:
         session.close()
 
 
 if __name__ == "__main__":
-    seed_demo_data()
+    seed_real_data()

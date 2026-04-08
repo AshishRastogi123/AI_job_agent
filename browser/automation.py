@@ -29,7 +29,31 @@ class BrowserAutomation:
         """Navigate to job URL and return page content"""
         self.page.goto(url)
         self.page.wait_for_load_state('networkidle')
+        self._dismiss_cookie_popup()
         return self.page.content()
+
+    def _dismiss_cookie_popup(self):
+        selectors = [
+            'button:has-text("accept all")',
+            'button:has-text("accept cookies")',
+            'button:has-text("agree")',
+            'button:has-text("allow all")',
+            'button:has-text("ok")',
+            'button:has-text("yes")',
+            'button:has-text("accept")',
+            'button:has-text("got it")',
+        ]
+        frames = [self.page] + list(self.page.frames)
+        for frame in frames:
+            for selector in selectors:
+                try:
+                    button = frame.query_selector(selector)
+                    if button and button.is_visible():
+                        button.click()
+                        self.page.wait_for_timeout(500)
+                        return
+                except Exception:
+                    continue
 
     def detect_form_fields(self) -> List[Dict]:
         """Detect all form fields on the page"""
